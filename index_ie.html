@@ -1,0 +1,243 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1"/>
+    <script src="cu-rtc-web/jquery.min.js"></script>
+    <script src="cu-rtc-web/bootstrap.min.js"></script>
+
+    <!-- support stuff -->
+    <script src="cu-rtc-web/base64.js"></script>
+    <script src="cu-rtc-web/objext.js"></script>
+    <script src="cu-rtc-web/event.js"></script>
+    <script src="cu-rtc-web/eventTarget.js"></script>
+    <script src="cu-rtc-web/defineEventProperty.js"></script>
+
+    <!-- curtc -->
+
+    <script src="cu-rtc-web/rtapi.js"></script>
+    <script src="cu-rtc-web/curtcEnums.js"></script>
+    <script src="cu-rtc-web/MediaStream.js"></script>
+    <script src="cu-rtc-web/getUserMedia.js"></script>
+    <script src="cu-rtc-web/StunBinding.js"></script>
+    <script src="cu-rtc-web/RealtimePort.js"></script>
+    <script src="cu-rtc-web/RealtimeTransport.js"></script>
+    <script src="cu-rtc-web/RealtimeMediaDescription.js"></script>
+    <script src="cu-rtc-web/RealtimeMediaStream.js"></script>
+    <script src="cu-rtc-web/LocalRealtimeMediaStream.js"></script>
+    <script src="cu-rtc-web/RemoteRealtimeMediaStream.js"></script>
+    <script src="cu-rtc-web/promote.js"></script>
+
+
+    <!-- icejs -->
+    <script type="text/javascript">window.icejs = {}</script>
+    <script src="cu-rtc-web/checker.js"></script>
+    <script src="cu-rtc-web/candidateevent.js"></script>
+    <script src="cu-rtc-web/reflexive.js"></script>
+    <script src="cu-rtc-web/gather.js"></script>
+
+    <script src="transportbuilder.js"></script>
+    <script src="peerconnection.js"></script>
+
+</head>
+<body>
+<script type="text/javascript">
+  var localStream;
+  var remoteStream;
+  var pc;
+  var mediaConstraints = {'has_audio':true, 'has_video':true};
+  var answerer = location.search.indexOf('answerer') != -1;
+
+  function getUserMedia() {
+    if (navigator.getUserMedia) {
+      navigator.getUserMedia({'audio':true, 'video': false}, onUserMediaSuccess, onUserMediaError);
+    }
+    else if (navigator.mozGetUserMedia) {
+      navigator.mozGetUserMedia({'audio':true, 'video': { mandatory: { maxFrameRate: 25, maxWidth: 320, maxHeight: 240 }} }, onUserMediaSuccess, onUserMediaError);
+    }
+    else {
+      navigator.webkitGetUserMedia({'audio':true, 'video': true}, onUserMediaSuccess, onUserMediaError);
+    }
+    console.log("Requested access to local media with new syntax.");
+  }
+
+  function createPeerConnection() {
+    console.log("Create PeerConnection");
+    //var pc_config = {iceServers:[{url:"turn:xxx@192.168.10.146:3478", credential: "xxx"}]};
+    var pc_config = {iceServers:[]};
+
+
+    if (navigator.RTCPeerConnection || window.RTCPeerConnection) {
+      pc = new RTCPeerConnection(pc_config);
+
+      pc.onconnecting = onSessionConnecting;
+      pc.onopen = onSessionOpened;
+      pc.onaddstream = onRemoteStreamAdded;
+      pc.onremovestream = onRemoteStreamRemoved;
+    }
+    else if (navigator.mozRTCPeerConnection) {
+      pc = new mozRTCPeerConnection(pc_config);
+    } else {
+      pc = new webkitRTCPeerConnection(pc_config);
+
+      pc.onconnecting = onSessionConnecting;
+      pc.onopen = onSessionOpened;
+      pc.onaddstream = onRemoteStreamAdded;
+      pc.onremovestream = onRemoteStreamRemoved;
+
+      console.log("Created webkitRTCPeerConnnection with config \"" + JSON.stringify(pc_config) + "\".");
+    }
+    pc.onicecandidate = onIceCandidate;
+  }
+
+  function setStatus(state) {
+    footer.innerHTML = state;
+  }
+
+  function setLocalDescription(sessionDescription) {
+    console.log('setLocalDescription');
+
+    $('#local_sdp').val(sessionDescription.sdp);
+
+    pc.setLocalDescription(sessionDescription);
+  }
+
+  function setLocalDescriptionError(error) {
+    console.log('setLocalDescriptionError' + error);
+  }
+
+  function onUserMediaSuccess(stream) {
+    console.log("User has granted access to local media.");
+
+    if (navigator.webkitURL) {
+      var url = webkitURL.createObjectURL(stream);
+      localVideo.src = url;
+    }
+    else if (localVideo.mozSrcObject !== undefined) {
+      localVideo.mozSrcObject = stream;  
+    }
+    else {
+      localVideo.src = stream;
+    }
+    localStream = stream;
+
+    createPeerConnection();
+
+    var constraints = {};
+    constraints.video = { mandatory: {}, optional: [] };
+    //constraints.video.optional[0] = { 'bandwidth' : 50000 };
+    
+    pc.addStream(localStream, constraints);
+    if (!answerer) {
+      pc.createOffer(setLocalDescription, null, constraints);
+    }
+  }
+
+  function onUserMediaError(error) {
+    console.log("Failed to get access to local media. Error code was " + error.code);
+    alert("Failed to get access to local media. Error code was " + error.code + ".");
+  }
+
+  function onIceCandidate(event) {
+    if (event.candidate) {
+      $('#local_sdp').val(pc.localDescription.sdp);
+    } else {
+      console.log("End of candidates.");
+    }
+  }
+
+  function onSessionConnecting(message) {
+    console.log("Session connecting.");
+  }
+
+  function onSessionOpened(message) {
+    console.log("Session opened.");
+  }
+
+  function onRemoteStreamAdded(event) {
+    console.log("Remote stream added.");
+    if (navigator.webkitURL) {
+      var url = webkitURL.createObjectURL(event.stream);
+      remoteVideo.src = url;
+    }
+    else if (remoteVideo.mozSrcObject !== undefined) {
+      remoteVideo.mozSrcObject = event.stream;
+    }
+    else {
+      remoteVideo.src = event.stream;
+    }
+    remoteStream = event.stream;
+  }
+
+  function onRemoteStreamRemoved(event) {
+    console.log("Remote stream removed.");
+  }
+
+  function stop() {
+    pc.close();
+    pc = null;
+  }
+
+
+  $(function() {
+    var sdp = "v=0\r\n" + 
+"o=- 245765016 2 IN IP4 127.0.0.1\r\n" + 
+"s=-\r\n" + 
+"t=0 0\r\n" + 
+"a=group:BUNDLE audio\r\n" + 
+"m=audio 61489 RTP/SAVPF 103 104 111 0 8 106 105 13 126\r\n" + 
+"c=IN IP4 192.168.1.36\r\n" + 
+"a=rtcp:61489 IN IP4 192.168.1.36\r\n" + 
+"a=candidate:3793899172 1 tcp 1509957375 192.168.1.36 61489 typ host generation 0\r\n" + 
+"a=candidate:3793899172 2 tcp 1509957375 192.168.1.36 61489 typ host generation 0\r\n" + 
+"a=ice-ufrag:V1ecjjIDHgmEYC7M\r\n" + 
+"a=ice-pwd:8fDPzO50ayDSwhLAZ6HS2Mzf\r\n" + 
+"a=ice-options:google-ice\r\n" + 
+"a=sendrecv\r\n" + 
+"a=mid:audio\r\n" + 
+"a=rtcp-mux\r\n" + 
+"a=crypto:0 AES_CM_128_HMAC_SHA1_32 inline:6qQEBNaqnC3yqtw+noJ6yshM/N40OCsIoGZ8hRFe\r\n" + 
+"a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:sP4nXu2VTPSFhApujnDKvAuOh4r1LQ267OX9bVDX\r\n"
+
+    //new RTCPeerConnection({}).setRemoteDescription({sdp: sdp});
+
+    localVideo = document.getElementById("localVideo");
+    remoteVideo = document.getElementById("remoteVideo");
+
+    getUserMedia();
+
+    $('#remote_button').click(function() {
+      var type = answerer ? 'offer' : 'answer';
+      var session = new RTCSessionDescription({ type: type, sdp: $('#remote_sdp').val().replace('\n', '\r\n') });
+      pc.setRemoteDescription(session, function() {
+        if (answerer) {
+          var constraints = {};
+          constraints.video = { mandatory: {}, optional: [] };
+          constraints.video.optional[0] = { 'bandwidth' : 50000 };
+
+          pc.createAnswer(setLocalDescription, setLocalDescriptionError, constraints);
+        }
+      }, function(error) {
+        console.log(error);
+      });
+      return false;
+    });
+  });
+
+</script>
+
+<div>
+  <video style="height: auto; width: auto" id="localVideo" autoplay="autoplay"></video>
+  <video style="height: auto; width: auto" id="remoteVideo" autoplay="autoplay"></video>
+</div>
+<div>
+  <textarea id="local_sdp" width="100%" height="200px" style="box-sizing: border-box;font-size:10px;line-height:12px;"></textarea>
+</div>
+<div>
+  <textarea id="remote_sdp" width="100%" height="200px" style="box-sizing: border-box;font-size:10px;line-height:12px;"></textarea>
+</div>
+  <input id="remote_button" type="button" value ="setRemoteDescription"/>
+  <div id="footer">
+  </div>
+
+</body>
+</html>
